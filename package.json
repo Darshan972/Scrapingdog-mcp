@@ -1,0 +1,54 @@
+{
+  "name": "scrapingdog-mcp",
+  "version": "0.1.0",
+  "description": "Model Context Protocol (MCP) server for the Scrapingdog web-scraping and SERP APIs.",
+  "license": "MIT",
+  "author": "Scrapingdog",
+  "homepage": "https://www.scrapingdog.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scrapingdog/scrapingdog-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/scrapingdog/scrapingdog-mcp/issues"
+  },
+  "type": "module",
+  "bin": {
+    "scrapingdog-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "start": "node dist/index.js",
+    "dev": "node --loader ts-node/esm src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "list:unverified": "node scripts/list-unverified.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "scrapingdog",
+    "web-scraping",
+    "serp",
+    "scraper",
+    "google-search",
+    "amazon",
+    "linkedin"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}
