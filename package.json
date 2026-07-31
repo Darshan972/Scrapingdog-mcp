@@ -1,6 +1,7 @@
 {
   "name": "scrapingdog-mcp",
   "version": "0.1.0",
+  "mcpName": "io.github.scrapingdog/scrapingdog-mcp",
   "description": "Model Context Protocol (MCP) server for the Scrapingdog web-scraping and SERP APIs.",
   "license": "MIT",
   "author": "Scrapingdog",

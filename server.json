@@ -1,0 +1,41 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.scrapingdog/scrapingdog-mcp",
+  "title": "Scrapingdog",
+  "description": "MCP server for the Scrapingdog web-scraping and SERP APIs: web scrape, the full Google family, Amazon, Walmart, eBay, LinkedIn, X, YouTube, Bing, Baidu, ChatGPT, and screenshots.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/scrapingdog/scrapingdog-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://www.scrapingdog.com",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "scrapingdog-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SCRAPINGDOG_API_KEY",
+          "description": "Your Scrapingdog API key (from https://www.scrapingdog.com/ dashboard).",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "SCRAPINGDOG_API_BASE",
+          "description": "Override the Scrapingdog API base URL.",
+          "default": "https://api.scrapingdog.com"
+        },
+        {
+          "name": "SCRAPINGDOG_TIMEOUT_MS",
+          "description": "Per-request timeout in milliseconds.",
+          "default": "90000"
+        }
+      ]
+    }
+  ]
+}
