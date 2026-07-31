@@ -234,7 +234,6 @@ export const ENDPOINTS: Endpoint[] = [
     title: "Amazon Product API",
     path: "/amazon/product",
     description: "Scrape a single Amazon product page (price, specs, ratings) by ASIN.",
-    verify: true,
     params: [
       { name: "asin", type: "string", required: true, description: "Amazon Standard Identification Number (ASIN) of the product." },
       { name: "domain", type: "string", description: "Amazon TLD, e.g. com, in, de, co.uk.", default: "com" },
@@ -269,7 +268,6 @@ export const ENDPOINTS: Endpoint[] = [
     path: "/linkedin",
     description:
       "Scrape a public LinkedIn person or company profile by its public identifier (the slug in the profile URL).",
-    verify: true,
     params: [
       { name: "type", type: "string", required: true, description: "Profile type to scrape.", enum: ["profile", "company"] },
       { name: "linkId", type: "string", required: true, description: "The public LinkedIn id/slug, e.g. 'williamhgates' for linkedin.com/in/williamhgates." },
@@ -302,7 +300,6 @@ export const ENDPOINTS: Endpoint[] = [
     title: "YouTube Transcripts API",
     path: "/youtube/transcripts",
     description: "Get the transcript (with timestamps) for a YouTube video.",
-    verify: true,
     params: [
       { name: "v", type: "string", required: true, description: "YouTube video id (the part after ?v= in the URL)." },
       LANGUAGE,
@@ -357,7 +354,6 @@ export const ENDPOINTS: Endpoint[] = [
     title: "Google Images API",
     path: "/google_images",
     description: "Get Google Images search results with sources and thumbnails.",
-    verify: true,
     params: [
       { name: "query", type: "string", required: true, description: "Image search query." },
       DOMAIN,
@@ -449,21 +445,6 @@ export const ENDPOINTS: Endpoint[] = [
     ],
   },
   {
-    tool: "google_light_search",
-    title: "Google Light Search API",
-    path: "/google_light",
-    description: "Lightweight Google Search optimized for high-volume, low-latency requests.",
-    verify: true,
-    params: [
-      { name: "query", type: "string", required: true, description: "Search query." },
-      { name: "results", type: "number", description: "Number of results per page." },
-      { name: "page", type: "number", description: "Zero-based page number.", default: "0" },
-      DOMAIN,
-      COUNTRY,
-      LANGUAGE,
-    ],
-  },
-  {
     tool: "universal_search",
     title: "Universal Search API",
     path: "/search",
@@ -481,6 +462,9 @@ export const ENDPOINTS: Endpoint[] = [
     title: "Amazon Reviews API",
     path: "/amazon/reviews",
     description: "Scrape customer reviews, ratings and reviewer details for an Amazon product by ASIN.",
+    // Route confirmed correct, but as of 2026-08-01 the live endpoint returns
+    // HTTP 400 "Something went wrong" for every input — a Scrapingdog backend
+    // issue (or plan scope), not a wrapper bug. Kept flagged until it returns data.
     verify: true,
     params: [
       { name: "asin", type: "string", required: true, description: "Amazon ASIN of the product." },
@@ -494,7 +478,6 @@ export const ENDPOINTS: Endpoint[] = [
     title: "Amazon Offers API",
     path: "/amazon/offers",
     description: "Fetch all buying offers and sellers for an Amazon product by ASIN.",
-    verify: true,
     params: [
       { name: "asin", type: "string", required: true, description: "Amazon ASIN of the product." },
       { name: "domain", type: "string", description: "Amazon TLD, e.g. com, in, de, co.uk.", default: "com" },
@@ -508,7 +491,6 @@ export const ENDPOINTS: Endpoint[] = [
     title: "YouTube Video API",
     path: "/youtube/video",
     description: "Get details and metadata for a single YouTube video.",
-    verify: true,
     params: [
       { name: "v", type: "string", required: true, description: "YouTube video id (the part after ?v= in the URL)." },
       COUNTRY,
@@ -520,7 +502,6 @@ export const ENDPOINTS: Endpoint[] = [
     title: "YouTube Channel API",
     path: "/youtube/channel",
     description: "Get a YouTube channel's details and videos.",
-    verify: true,
     params: [
       { name: "channel_id", type: "string", required: true, description: "YouTube channel id." },
       COUNTRY,
@@ -532,7 +513,6 @@ export const ENDPOINTS: Endpoint[] = [
     title: "YouTube Comments API",
     path: "/youtube/comments",
     description: "Get comments for a YouTube video.",
-    verify: true,
     params: [
       { name: "v", type: "string", required: true, description: "YouTube video id (the part after ?v= in the URL)." },
       COUNTRY,

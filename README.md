@@ -58,11 +58,10 @@ claude mcp add scrapingdog -e SCRAPINGDOG_API_KEY=your_api_key_here -- node /abs
 
 ## Available tools
 
-**36 tools.** Each tool's full parameter set (with descriptions and API
+**35 tools.** Each tool's full parameter set (with descriptions and API
 defaults) is generated from [`src/endpoints.ts`](src/endpoints.ts) and surfaced
-to the client as the tool's input schema. Rows marked ⚠️ have a path/params
-inferred from Scrapingdog's naming convention rather than confirmed against the
-published docs — see [Unverified endpoints](#unverified-endpoints).
+to the client as the tool's input schema. All paths were validated against the
+live API except `amazon_reviews` (⚠️) — see [Known issues](#known-issues).
 
 ### General
 
@@ -89,17 +88,16 @@ published docs — see [Unverified endpoints](#unverified-endpoints).
 | `google_hotels` | `/google_hotels` | `query`, `check_in_date`, `check_out_date` |
 | `google_patents` | `/google_patents` | `query` |
 | `google_immersive_product` | `/google_immersive_product` | `page_token` |
-| `google_images` ⚠️ | `/google_images` | `query` |
-| `google_light_search` ⚠️ | `/google_light` | `query` |
+| `google_images` | `/google_images` | `query` |
 
 ### E-commerce
 
 | Tool | Scrapingdog endpoint | Key required args |
 | --- | --- | --- |
 | `amazon_search` | `/amazon/search` | `query`, `domain`, `page`, `country` |
-| `amazon_product` ⚠️ | `/amazon/product` | `asin` |
+| `amazon_product` | `/amazon/product` | `asin` |
 | `amazon_reviews` ⚠️ | `/amazon/reviews` | `asin` |
-| `amazon_offers` ⚠️ | `/amazon/offers` | `asin` |
+| `amazon_offers` | `/amazon/offers` | `asin` |
 | `walmart_search` | `/walmart/search` | `url` |
 | `ebay_search` | `/ebay/search` | `url` |
 
@@ -107,13 +105,13 @@ published docs — see [Unverified endpoints](#unverified-endpoints).
 
 | Tool | Scrapingdog endpoint | Key required args |
 | --- | --- | --- |
-| `linkedin_profile` ⚠️ | `/linkedin` | `type`, `linkId` |
+| `linkedin_profile` | `/linkedin` | `type`, `linkId` |
 | `x_profile` | `/x/profile` | `profileId` |
 | `youtube_search` | `/youtube` | `search_query` |
-| `youtube_transcripts` ⚠️ | `/youtube/transcripts` | `v` |
-| `youtube_video` ⚠️ | `/youtube/video` | `v` |
-| `youtube_channel` ⚠️ | `/youtube/channel` | `channel_id` |
-| `youtube_comments` ⚠️ | `/youtube/comments` | `v` |
+| `youtube_transcripts` | `/youtube/transcripts` | `v` |
+| `youtube_video` | `/youtube/video` | `v` |
+| `youtube_channel` | `/youtube/channel` | `channel_id` |
+| `youtube_comments` | `/youtube/comments` | `v` |
 
 ### Other search engines
 
@@ -130,22 +128,21 @@ published docs — see [Unverified endpoints](#unverified-endpoints).
 | `chatgpt` | `/chatgpt` | `prompt` |
 | `screenshot` | `/screenshot` | `url` (returns an image) |
 
-## Unverified endpoints
+## Known issues
 
-The following tools were added for full coverage using Scrapingdog's standard
-path convention, but the documentation fetcher could not confirm their exact
-paths/params. Please validate them against the live API (a live smoke test with
-a real key is the fastest way) and adjust `src/endpoints.ts` if needed:
+All 35 endpoints were validated against the live API and return data, with one
+exception:
+
+- **`amazon_reviews`** — the `/amazon/reviews` route is correct, but the live
+  endpoint currently responds `HTTP 400 "Something went wrong"` for every input
+  (any ASIN, with or without extra params). This looks like a Scrapingdog
+  backend/plan-scope issue rather than a wrapper bug. It stays marked with
+  `verify: true` in `src/endpoints.ts` until it returns data. List flagged
+  endpoints anytime with:
 
 ```bash
 npm run list:unverified
 ```
-
-`amazon_product`, `amazon_reviews`, `amazon_offers`, `linkedin_profile`,
-`youtube_transcripts`, `youtube_video`, `youtube_channel`, `youtube_comments`,
-`google_images`, `google_light_search`.
-
-Once confirmed, remove the `verify: true` flag from the corresponding entry.
 
 ## Adding or adjusting an endpoint
 
