@@ -1,17 +1,17 @@
 {
   "name": "scrapingdog-mcp",
   "version": "0.1.0",
-  "mcpName": "io.github.scrapingdog/scrapingdog-mcp",
+  "mcpName": "io.github.darshan972/scrapingdog-mcp",
   "description": "Model Context Protocol (MCP) server for the Scrapingdog web-scraping and SERP APIs.",
   "license": "MIT",
   "author": "Scrapingdog",
   "homepage": "https://www.scrapingdog.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/scrapingdog/scrapingdog-mcp.git"
+    "url": "git+https://github.com/Darshan972/Scrapingdog-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/scrapingdog/scrapingdog-mcp/issues"
+    "url": "https://github.com/Darshan972/Scrapingdog-mcp/issues"
   },
   "type": "module",
   "bin": {

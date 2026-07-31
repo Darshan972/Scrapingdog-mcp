@@ -1,11 +1,11 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.scrapingdog/scrapingdog-mcp",
+  "name": "io.github.darshan972/scrapingdog-mcp",
   "title": "Scrapingdog",
   "description": "MCP server for the Scrapingdog web-scraping and SERP APIs: web scrape, the full Google family, Amazon, Walmart, eBay, LinkedIn, X, YouTube, Bing, Baidu, ChatGPT, and screenshots.",
   "version": "0.1.0",
   "repository": {
-    "url": "https://github.com/scrapingdog/scrapingdog-mcp",
+    "url": "https://github.com/Darshan972/Scrapingdog-mcp",
     "source": "github"
   },
   "websiteUrl": "https://www.scrapingdog.com",
