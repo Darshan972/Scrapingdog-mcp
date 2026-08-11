@@ -286,7 +286,7 @@ export const ENDPOINTS: Endpoint[] = [
   {
     tool: "youtube_search",
     title: "YouTube Search API",
-    path: "/youtube",
+    path: "/youtube/search",
     description: "Retrieve YouTube search results with video titles and metadata.",
     params: [
       { name: "search_query", type: "string", required: true, description: "YouTube search query, e.g. 'elon musk interview'." },
