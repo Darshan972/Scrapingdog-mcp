@@ -107,7 +107,7 @@ live API except `amazon_reviews` (⚠️) — see [Known issues](#known-issues).
 | --- | --- | --- |
 | `linkedin_profile` | `/linkedin` | `type`, `linkId` |
 | `x_profile` | `/x/profile` | `profileId` |
-| `youtube_search` | `/youtube` | `search_query` |
+| `youtube_search` | `/youtube/search` | `search_query` |
 | `youtube_transcripts` | `/youtube/transcripts` | `v` |
 | `youtube_video` | `/youtube/video` | `v` |
 | `youtube_channel` | `/youtube/channel` | `channel_id` |

@@ -29,6 +29,7 @@
     "prepare": "npm run build",
     "start": "node dist/index.js",
     "dev": "node --loader ts-node/esm src/index.ts",
+    "test": "npm run build && node --test test/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "list:unverified": "node scripts/list-unverified.mjs",
     "prepublishOnly": "npm run build"
