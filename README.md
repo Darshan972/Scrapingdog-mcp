@@ -1,180 +1,125 @@
 # Scrapingdog MCP Server
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server that exposes the
-[Scrapingdog](https://www.scrapingdog.com) web-scraping and SERP APIs as tools any
-MCP-compatible client (Claude Desktop, Claude Code, Cursor, etc.) can call.
+The [Model Context Protocol](https://modelcontextprotocol.io) server for the
+[Scrapingdog](https://www.scrapingdog.com) APIs, hosted at **`https://mcp.scrapingdog.com/mcp`**.
 
-One tool per Scrapingdog product — general web scraping, the full Google family,
-Amazon, Walmart, eBay, LinkedIn, X, YouTube, Bing, Baidu, and screenshots.
+It gives an AI assistant 35 tools for live web data — Google SERPs, Maps, News, Shopping, Lens,
+Amazon, LinkedIn, YouTube, X, Walmart, eBay, screenshots and a general-purpose scraper — each
+backed by the corresponding Scrapingdog endpoint.
 
-## Requirements
+There is nothing to install. Point your client at the URL and send your own API key.
 
-- Node.js ≥ 18
-- A Scrapingdog API key — get one on your [dashboard](https://www.scrapingdog.com/).
+## Connect
 
-## Install & build
+Get an API key from the [Scrapingdog dashboard](https://www.scrapingdog.com), then:
+
+**Claude Code**
 
 ```bash
-npm install
-npm run build
+claude mcp add --transport http scrapingdog https://mcp.scrapingdog.com/mcp \
+  --header "Authorization: Bearer YOUR_API_KEY"
 ```
 
-## Configuration
-
-The server reads your API key from the **`SCRAPINGDOG_API_KEY`** environment
-variable. It is never passed as a tool argument, so it stays out of the model's
-context, transcripts, and logs.
-
-| Variable | Required | Default | Description |
-| --- | --- | --- | --- |
-| `SCRAPINGDOG_API_KEY` | yes | — | Your Scrapingdog API key. |
-| `SCRAPINGDOG_API_BASE` | no | `https://api.scrapingdog.com` | Override the API base URL. |
-| `SCRAPINGDOG_TIMEOUT_MS` | no | `90000` | Per-request timeout in milliseconds. |
-
-### Claude Desktop
-
-Add to `claude_desktop_config.json`
-(macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`):
+**Cursor / Windsurf / any client with an `mcp.json`**
 
 ```json
 {
   "mcpServers": {
     "scrapingdog": {
-      "command": "node",
-      "args": ["/absolute/path/to/ScrapingdogMCP/dist/index.js"],
-      "env": {
-        "SCRAPINGDOG_API_KEY": "your_api_key_here"
-      }
+      "url": "https://mcp.scrapingdog.com/mcp",
+      "headers": { "Authorization": "Bearer YOUR_API_KEY" }
     }
   }
 }
 ```
 
-### Claude Code
+**claude.ai** — Settings → Connectors → Add custom connector, URL
+`https://mcp.scrapingdog.com/mcp`, authentication "API key", paste your key.
+
+**Check it by hand**
 
 ```bash
-claude mcp add scrapingdog -e SCRAPINGDOG_API_KEY=your_api_key_here -- node /absolute/path/to/ScrapingdogMCP/dist/index.js
+curl -s https://mcp.scrapingdog.com/mcp \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-## Available tools
+Calls are billed to the key you send, at the same credit cost as the REST API. A tool's
+description states what it costs.
 
-**35 tools.** Each tool's full parameter set (with descriptions and API
-defaults) is generated from [`src/endpoints.ts`](src/endpoints.ts) and surfaced
-to the client as the tool's input schema. All paths were validated against the
-live API except `amazon_reviews` (⚠️) — see [Known issues](#known-issues).
+## How it works
 
-### General
+```
+MCP client ──Authorization: Bearer <key>──> mcp.scrapingdog.com ──api_key=<key>──> api.scrapingdog.com
+```
 
-| Tool | Scrapingdog endpoint | Key required args |
-| --- | --- | --- |
-| `web_scrape` | `/scrape` | `url` |
+The server is **stateless**: every request builds its own MCP server and transport from the key on
+that request and tears them down with the response. One process serves many customers without a
+session map, so a key never outlives the request it came on and cannot leak into another caller's
+session. `npm run smoke` asserts exactly that, among other things.
 
-### Google family
+Keys are verified against Scrapingdog's own `/account` endpoint (which resolves user keys and team
+member keys, and costs no credits), cached briefly. If that check is unreachable the request is let
+through, because the API itself still enforces the key on every tool call — an outage in the
+verifier must not take the whole MCP surface down. No database credentials are needed anywhere in
+this service.
 
-| Tool | Scrapingdog endpoint | Key required args |
-| --- | --- | --- |
-| `google_search` | `/google` | `query` |
-| `google_maps` | `/google_maps` | `query` |
-| `google_news` | `/google_news/v2` | — (`query` or a `*_token`) |
-| `google_trends` | `/google_trends` | `query` |
-| `google_shopping` | `/google_shopping` | `query` |
-| `google_scholar` | `/google_scholar` | `query` (or `cites`) |
-| `google_jobs` | `/google_jobs` | `query` |
-| `google_finance` | `/google_finance` | `query` |
-| `google_lens` | `/google_lens` | `url` |
-| `google_ai_mode` | `/google/ai_mode` | `query` |
-| `google_ai_overview` | `/google/ai_overview` | `url` |
-| `google_shorts` | `/google_shorts` | `query` |
-| `google_hotels` | `/google_hotels` | `query`, `check_in_date`, `check_out_date` |
-| `google_patents` | `/google_patents` | `query` |
-| `google_immersive_product` | `/google_immersive_product` | `page_token` |
-| `google_images` | `/google_images` | `query` |
+## Layout
 
-### E-commerce
+| Path | What it is |
+| --- | --- |
+| `src/endpoints.ts` | The 35 endpoints, declared. **Adding an API means appending one object here** — no handler code. |
+| `src/server.ts` | Builds the MCP server and derives each tool's schema from that registry |
+| `src/client.ts` | The HTTP client for api.scrapingdog.com |
+| `src/auth.ts` | API-key verification and caching |
+| `src/http.ts` | The hosted entry point (Streamable HTTP) |
+| `src/index.ts` | A stdio entry point, for local development only |
+| `deploy/nginx/` | The `mcp.scrapingdog.com` vhost |
+| `ecosystem.config.cjs` | pm2 app definition |
+| `scripts/smoke.mjs` | Pre-deploy checks against a stubbed API |
 
-| Tool | Scrapingdog endpoint | Key required args |
-| --- | --- | --- |
-| `amazon_search` | `/amazon/search` | `query`, `domain`, `page`, `country` |
-| `amazon_product` | `/amazon/product` | `asin` |
-| `amazon_reviews` ⚠️ | `/amazon/reviews` | `asin` |
-| `amazon_offers` | `/amazon/offers` | `asin` |
-| `walmart_search` | `/walmart/search` | `url` |
-| `ebay_search` | `/ebay/search` | `url` |
-
-### Social / professional
-
-| Tool | Scrapingdog endpoint | Key required args |
-| --- | --- | --- |
-| `linkedin_profile` | `/linkedin` | `type`, `linkId` |
-| `x_profile` | `/x/profile` | `profileId` |
-| `youtube_search` | `/youtube` | `search_query` |
-| `youtube_transcripts` | `/youtube/transcripts` | `v` |
-| `youtube_video` | `/youtube/video` | `v` |
-| `youtube_channel` | `/youtube/channel` | `channel_id` |
-| `youtube_comments` | `/youtube/comments` | `v` |
-
-### Other search engines
-
-| Tool | Scrapingdog endpoint | Key required args |
-| --- | --- | --- |
-| `bing_search` | `/bing/search` | `query` |
-| `baidu_search` | `/baidu/search` | `query` |
-| `universal_search` | `/search` | `query` |
-
-### AI / LLM & tools
-
-| Tool | Scrapingdog endpoint | Key required args |
-| --- | --- | --- |
-| `chatgpt` | `/chatgpt` | `prompt` |
-| `screenshot` | `/screenshot` | `url` (returns an image) |
-
-## Known issues
-
-All 35 endpoints were validated against the live API and return data, with one
-exception:
-
-- **`amazon_reviews`** — the `/amazon/reviews` route is correct, but the live
-  endpoint currently responds `HTTP 400 "Something went wrong"` for every input
-  (any ASIN, with or without extra params). This looks like a Scrapingdog
-  backend/plan-scope issue rather than a wrapper bug. It stays marked with
-  `verify: true` in `src/endpoints.ts` until it returns data. List flagged
-  endpoints anytime with:
+## Local development
 
 ```bash
-npm run list:unverified
+npm ci
+npm run build
+npm run smoke          # stubs the API: no key needed, no credits spent
+
+npm run dev            # the HTTP server on http://127.0.0.1:8731/mcp
+SCRAPINGDOG_API_KEY=... npm run dev:stdio   # stdio, for poking at one tool
 ```
 
-## Adding or adjusting an endpoint
+Inspect it interactively:
 
-Every endpoint is a single declarative object in
-[`src/endpoints.ts`](src/endpoints.ts) — no handler code to write. To add a
-Scrapingdog product (e.g. Google Hotels, Patents, TikTok), append:
-
-```ts
-{
-  tool: "google_hotels",
-  title: "Google Hotels API",
-  path: "/google_hotels",
-  description: "…",
-  params: [
-    { name: "query", type: "string", required: true, description: "…" },
-    // …
-  ],
-}
+```bash
+npx @modelcontextprotocol/inspector
+# transport: Streamable HTTP, url: http://127.0.0.1:8731/mcp,
+# header: Authorization: Bearer <your key>
 ```
 
-Rebuild with `npm run build`.
+Settings live in `.env.example`.
 
-## Architecture
+## Deploying
 
+Pushing to `main` typechecks, builds, runs the smoke suite, and only then rolls out to the
+production boxes with `pm2 reload` (see `.github/workflows/deploy.yml`). The health check requires
+`/healthz` to answer 200 **and** an unauthenticated `POST /mcp` to answer 401, so a deploy that
+accidentally opened the gateway fails instead of going green.
+
+First time on a box:
+
+```bash
+sudo cp deploy/nginx/mcp.scrapingdog.com.conf /etc/nginx/sites-available/
+sudo ln -s /etc/nginx/sites-available/mcp.scrapingdog.com.conf /etc/nginx/sites-enabled/
+sudo certbot --nginx -d mcp.scrapingdog.com
+sudo nginx -t && sudo systemctl reload nginx
+pm2 start ecosystem.config.cjs && pm2 save
 ```
-src/
-  types.ts       Endpoint / EndpointParam type definitions
-  endpoints.ts   Declarative registry of every Scrapingdog API
-  client.ts      HTTP client: URL building, API-key resolution, error handling
-  server.ts      Compiles each endpoint into an MCP tool + Zod input schema
-  index.ts       stdio entry point
-```
+
+The app binds `127.0.0.1` so nginx is the only route in. Don't change that on a public host: the
+key check lives in this process, so an exposed port is an open proxy to the API.
 
 ## License
 

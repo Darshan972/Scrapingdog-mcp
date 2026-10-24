@@ -1,0 +1,169 @@
+# Deploys the hosted MCP server to the Scrapingdog boxes.
+#
+# Mirrors the main API repo's deploy: same secrets, same nvm + pm2 dance, same
+# "fail rather than silently skip a host" rule. Differences are deliberate:
+#   - one app (dist/http.js) on port 8731, not the API on 8000
+#   - the health check hits /healthz, which exists for exactly this
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-mcp-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  # Build and typecheck once, before any box is touched. A compile error should
+  # never reach a server.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Smoke test the built server
+        run: npm run smoke
+
+  plan:
+    needs: verify
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.pick.outputs.targets }}
+    env:
+      SERVER1_HOST: ${{ secrets.SERVER1_HOST }}
+      SERVER2_HOST: ${{ secrets.SERVER2_HOST }}
+      SERVER3_HOST: ${{ secrets.SERVER3_HOST }}
+    steps:
+      - id: pick
+        run: |
+          # A missing production host is a misconfiguration, not a target to
+          # quietly drop - otherwise this deploys to fewer boxes than it should
+          # and the run still goes green.
+          missing=""
+          [ -z "$SERVER1_HOST" ] && missing="$missing primary"
+          [ -z "$SERVER2_HOST" ] && missing="$missing secondary"
+          [ -z "$SERVER3_HOST" ] && missing="$missing tertiary"
+          if [ -n "$missing" ]; then
+            echo "ERROR: no host configured for:$missing"
+            exit 1
+          fi
+          echo 'targets=["primary","secondary","tertiary"]' >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      # Deploy every target even if one fails, so the boxes don't drift.
+      fail-fast: false
+      matrix:
+        server: ${{ fromJSON(needs.plan.outputs.targets) }}
+    env:
+      APP_PORT: "8731"
+      APP_DIR: /home/darshan/Scrapingdog-mcp
+      SERVER1_HOST: ${{ secrets.SERVER1_HOST }}
+      SERVER2_HOST: ${{ secrets.SERVER2_HOST }}
+      SERVER3_HOST: ${{ secrets.SERVER3_HOST }}
+      PROD_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+    steps:
+      - name: Resolve target host
+        run: |
+          # A case per target rather than if/else: with three servers an "else"
+          # silently lumps every unmatched name onto one host.
+          case "${{ matrix.server }}" in
+            primary)   HOST="$SERVER1_HOST" ;;
+            secondary) HOST="$SERVER2_HOST" ;;
+            tertiary)  HOST="$SERVER3_HOST" ;;
+            *)         HOST="" ;;
+          esac
+          if [ -z "$HOST" ]; then
+            echo "ERROR: no host for ${{ matrix.server }} despite plan selecting it"
+            exit 1
+          fi
+          echo "SSH_HOST=$HOST" >> "$GITHUB_ENV"
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PROD_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: |
+          ssh "${{ secrets.SERVER_USER }}@$SSH_HOST" \
+            APP_PORT="$APP_PORT" APP_DIR="$APP_DIR" 'bash -s' << 'EOF'
+            set -e
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+            # First deploy clones; later ones sync to the exact remote state.
+            if [ ! -d "$APP_DIR/.git" ]; then
+              git clone https://github.com/Darshan972/Scrapingdog-mcp.git "$APP_DIR"
+            fi
+            cd "$APP_DIR"
+            git fetch origin
+            git checkout -f main
+            git reset --hard origin/main
+            git clean -fd
+
+            # Pin Node from .nvmrc rather than trusting nvm's default alias.
+            nvm install
+            nvm use
+            echo "Deploying with Node $(node -v)"
+
+            # nvm keeps globals per Node version, so a version bump can leave
+            # pm2 off PATH.
+            if ! command -v pm2 >/dev/null 2>&1; then
+              npm install -g pm2
+            fi
+
+            # devDependencies are needed for tsc, so no --omit=dev here.
+            npm ci
+            npm run build
+
+            pm2 reload ecosystem.config.cjs --update-env || pm2 start ecosystem.config.cjs
+
+            echo "Waiting for workers to stabilize..."
+            sleep 8
+            pm2 list
+
+            if pm2 jlist | grep -q '"status":"errored"'; then
+              echo "ERROR: a worker is errored"
+              pm2 logs scrapingdog-mcp --lines 50 --nostream
+              exit 1
+            fi
+
+            # "online" only means the process started. Prove it answers, and that
+            # an unauthenticated call is still refused - a 200 here would mean the
+            # whole gateway is open.
+            echo "Health check on port ${APP_PORT}..."
+            ok=false
+            for i in $(seq 1 10); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${APP_PORT}/healthz" || true)
+              if [ "$code" = "200" ]; then ok=true; break; fi
+              sleep 2
+            done
+            if [ "$ok" != true ]; then
+              echo "ERROR: /healthz did not return 200"
+              pm2 logs scrapingdog-mcp --lines 50 --nostream
+              exit 1
+            fi
+
+            auth=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+              -H 'content-type: application/json' -d '{}' \
+              "http://127.0.0.1:${APP_PORT}/mcp" || true)
+            if [ "$auth" != "401" ]; then
+              echo "ERROR: unauthenticated POST /mcp returned $auth, expected 401"
+              exit 1
+            fi
+
+            echo "Deployed: /healthz 200, unauthenticated /mcp 401"
+          EOF

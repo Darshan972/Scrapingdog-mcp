@@ -37,5 +37,27 @@
         }
       ]
     }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.scrapingdog.com/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Your Scrapingdog API key as a bearer token (from https://www.scrapingdog.com/ dashboard).",
+          "isRequired": true,
+          "isSecret": true,
+          "value": "Bearer {scrapingdog_api_key}",
+          "variables": {
+            "scrapingdog_api_key": {
+              "description": "Your Scrapingdog API key.",
+              "isRequired": true,
+              "isSecret": true
+            }
+          }
+        }
+      ]
+    }
   ]
 }

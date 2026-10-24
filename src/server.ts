@@ -42,7 +42,17 @@ function formatError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-export function createServer(): McpServer {
+export interface CreateServerOptions {
+  /**
+   * The caller's Scrapingdog API key. The hosted server passes the key it read
+   * from this request's Authorization header, so one process can serve many
+   * customers without any of them sharing a key. Omitted for the stdio server,
+   * which falls back to SCRAPINGDOG_API_KEY in its own environment.
+   */
+  apiKey?: string;
+}
+
+export function createServer(options: CreateServerOptions = {}): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
 
   for (const endpoint of ENDPOINTS) {
@@ -54,7 +64,7 @@ export function createServer(): McpServer {
         inputSchema: buildInputSchema(endpoint),
       },
       async (args: Record<string, unknown>) => {
-        const apiKey = getApiKey();
+        const apiKey = options.apiKey ?? getApiKey();
         if (!apiKey) {
           return {
             isError: true,
