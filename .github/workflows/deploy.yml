@@ -1,9 +1,14 @@
-# Deploys the hosted MCP server to the Scrapingdog boxes.
+# Deploys the hosted MCP server to its own box (mcp.scrapingdog.com).
 #
-# Mirrors the main API repo's deploy: same secrets, same nvm + pm2 dance, same
-# "fail rather than silently skip a host" rule. Differences are deliberate:
-#   - one app (dist/http.js) on port 8731, not the API on 8000
-#   - the health check hits /healthz, which exists for exactly this
+# Deliberately separate from the API servers: a bug or a memory leak here must
+# not be able to take down api.scrapingdog.com, and MCP wants much longer
+# timeouts than the REST API does.
+#
+# Required repository secrets:
+#   MCP_SERVER_HOST         the box's hostname or IP
+#   MCP_SERVER_USER         ssh user on it (e.g. ubuntu, root, darshan)
+#   MCP_SSH_PRIVATE_KEY     a private key whose public half is in that user's
+#                           ~/.ssh/authorized_keys
 name: Deploy
 
 on:
@@ -12,12 +17,12 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-mcp-${{ github.ref_name }}
+  group: deploy-mcp
   cancel-in-progress: false
 
 jobs:
-  # Build and typecheck once, before any box is touched. A compile error should
-  # never reach a server.
+  # Build and test once, before the box is touched. A compile error or a broken
+  # auth check should never reach production.
   verify:
     runs-on: ubuntu-latest
     steps:
@@ -29,80 +34,37 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
-      - name: Smoke test the built server
-        run: npm run smoke
-
-  plan:
-    needs: verify
-    runs-on: ubuntu-latest
-    outputs:
-      targets: ${{ steps.pick.outputs.targets }}
-    env:
-      SERVER1_HOST: ${{ secrets.SERVER1_HOST }}
-      SERVER2_HOST: ${{ secrets.SERVER2_HOST }}
-      SERVER3_HOST: ${{ secrets.SERVER3_HOST }}
-    steps:
-      - id: pick
-        run: |
-          # A missing production host is a misconfiguration, not a target to
-          # quietly drop - otherwise this deploys to fewer boxes than it should
-          # and the run still goes green.
-          missing=""
-          [ -z "$SERVER1_HOST" ] && missing="$missing primary"
-          [ -z "$SERVER2_HOST" ] && missing="$missing secondary"
-          [ -z "$SERVER3_HOST" ] && missing="$missing tertiary"
-          if [ -n "$missing" ]; then
-            echo "ERROR: no host configured for:$missing"
-            exit 1
-          fi
-          echo 'targets=["primary","secondary","tertiary"]' >> "$GITHUB_OUTPUT"
+      - run: npm run smoke
 
   deploy:
-    needs: plan
+    needs: verify
     runs-on: ubuntu-latest
-    strategy:
-      # Deploy every target even if one fails, so the boxes don't drift.
-      fail-fast: false
-      matrix:
-        server: ${{ fromJSON(needs.plan.outputs.targets) }}
     env:
       APP_PORT: "8731"
-      APP_DIR: /home/darshan/Scrapingdog-mcp
-      SERVER1_HOST: ${{ secrets.SERVER1_HOST }}
-      SERVER2_HOST: ${{ secrets.SERVER2_HOST }}
-      SERVER3_HOST: ${{ secrets.SERVER3_HOST }}
-      PROD_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
     steps:
-      - name: Resolve target host
+      - name: Check the host is configured
         run: |
-          # A case per target rather than if/else: with three servers an "else"
-          # silently lumps every unmatched name onto one host.
-          case "${{ matrix.server }}" in
-            primary)   HOST="$SERVER1_HOST" ;;
-            secondary) HOST="$SERVER2_HOST" ;;
-            tertiary)  HOST="$SERVER3_HOST" ;;
-            *)         HOST="" ;;
-          esac
-          if [ -z "$HOST" ]; then
-            echo "ERROR: no host for ${{ matrix.server }} despite plan selecting it"
+          if [ -z "${{ secrets.MCP_SERVER_HOST }}" ]; then
+            echo "ERROR: MCP_SERVER_HOST secret is not set"
             exit 1
           fi
-          echo "SSH_HOST=$HOST" >> "$GITHUB_ENV"
 
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "$PROD_SSH_KEY" > ~/.ssh/id_rsa
+          echo "${{ secrets.MCP_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "${{ secrets.MCP_SERVER_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Deploy
         run: |
-          ssh "${{ secrets.SERVER_USER }}@$SSH_HOST" \
-            APP_PORT="$APP_PORT" APP_DIR="$APP_DIR" 'bash -s' << 'EOF'
+          ssh "${{ secrets.MCP_SERVER_USER }}@${{ secrets.MCP_SERVER_HOST }}" \
+            APP_PORT="$APP_PORT" 'bash -s' << 'EOF'
             set -e
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+            APP_DIR="$HOME/Scrapingdog-mcp"
 
             # First deploy clones; later ones sync to the exact remote state.
             if [ ! -d "$APP_DIR/.git" ]; then
@@ -130,6 +92,7 @@ jobs:
             npm run build
 
             pm2 reload ecosystem.config.cjs --update-env || pm2 start ecosystem.config.cjs
+            pm2 save
 
             echo "Waiting for workers to stabilize..."
             sleep 8
@@ -142,8 +105,8 @@ jobs:
             fi
 
             # "online" only means the process started. Prove it answers, and that
-            # an unauthenticated call is still refused - a 200 here would mean the
-            # whole gateway is open.
+            # an unauthenticated call is still refused - a 200 there would mean
+            # the gateway is open to anyone.
             echo "Health check on port ${APP_PORT}..."
             ok=false
             for i in $(seq 1 10); do

@@ -103,20 +103,26 @@ Settings live in `.env.example`.
 
 ## Deploying
 
-Pushing to `main` typechecks, builds, runs the smoke suite, and only then rolls out to the
-production boxes with `pm2 reload` (see `.github/workflows/deploy.yml`). The health check requires
-`/healthz` to answer 200 **and** an unauthenticated `POST /mcp` to answer 401, so a deploy that
-accidentally opened the gateway fails instead of going green.
+The server runs on its own box, separate from the API servers, so a problem here cannot affect
+api.scrapingdog.com.
 
-First time on a box:
+**First time, on a bare Ubuntu box:**
 
 ```bash
-sudo cp deploy/nginx/mcp.scrapingdog.com.conf /etc/nginx/sites-available/
-sudo ln -s /etc/nginx/sites-available/mcp.scrapingdog.com.conf /etc/nginx/sites-enabled/
-sudo certbot --nginx -d mcp.scrapingdog.com
-sudo nginx -t && sudo systemctl reload nginx
-pm2 start ecosystem.config.cjs && pm2 save
+git clone https://github.com/Darshan972/Scrapingdog-mcp.git ~/Scrapingdog-mcp
+cd ~/Scrapingdog-mcp && bash deploy/setup-server.sh
 ```
+
+That installs Node (from `.nvmrc`), pm2, nginx and the vhost, builds and starts the app, opens the
+firewall, and issues the TLS certificate — skipping the certificate with a clear message if DNS
+doesn't point here yet. It is safe to re-run.
+
+**After that**, every push to `main` typechecks, builds, runs the smoke suite and only then rolls
+out with `pm2 reload` (`.github/workflows/deploy.yml`). Needs three repository secrets:
+`MCP_SERVER_HOST`, `MCP_SERVER_USER`, `MCP_SSH_PRIVATE_KEY`.
+
+The deploy health check requires `/healthz` to answer 200 **and** an unauthenticated `POST /mcp` to
+answer 401, so a deploy that accidentally opened the gateway fails instead of going green.
 
 The app binds `127.0.0.1` so nginx is the only route in. Don't change that on a public host: the
 key check lives in this process, so an exposed port is an open proxy to the API.
