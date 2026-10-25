@@ -79,6 +79,17 @@ jobs:
             # Pin Node from .nvmrc rather than trusting nvm's default alias.
             nvm install
             nvm use
+
+            # Node's linux-x64 build links against libatomic.so.1, absent from
+            # minimal images. Without this check the failure surfaces much later
+            # as an unreadable "shared libraries" error from npm or tsc.
+            if ! node -v >/dev/null 2>&1; then
+              echo "ERROR: node is installed but cannot start. On a minimal image this is"
+              echo "       usually a missing system library. Fix on the server with:"
+              echo "         sudo apt-get update && sudo apt-get install -y libatomic1"
+              node -v || true
+              exit 1
+            fi
             echo "Deploying with Node $(node -v)"
 
             # nvm keeps globals per Node version, so a version bump can leave

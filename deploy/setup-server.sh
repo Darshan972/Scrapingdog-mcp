@@ -17,7 +17,10 @@ say() { printf '\n=== %s\n' "$1"; }
 
 say "1/7  System packages"
 sudo apt-get update -qq
-sudo apt-get install -y -qq curl git nginx ufw
+# libatomic1: Node's official linux-x64 build links against libatomic.so.1, which
+# minimal Ubuntu/Debian images do not ship. Without it `node -v` fails with
+# "error while loading shared libraries" and every later step is a mystery.
+sudo apt-get install -y -qq curl git nginx ufw libatomic1
 
 say "2/7  Node (version from .nvmrc)"
 export NVM_DIR="$HOME/.nvm"
