@@ -63,28 +63,54 @@ sudo ufw allow 'Nginx Full' >/dev/null
 sudo ufw --force enable >/dev/null
 sudo ufw status | head -5
 
-say "7/7  nginx + TLS"
+say "7/7  nginx"
 sudo cp "$APP_DIR/deploy/nginx/${DOMAIN}.conf" /etc/nginx/sites-available/
 sudo ln -sf "/etc/nginx/sites-available/${DOMAIN}.conf" "/etc/nginx/sites-enabled/${DOMAIN}.conf"
 sudo nginx -t
 sudo systemctl reload nginx
 
-# certbot can only issue once the domain resolves to THIS box, so check first
-# instead of failing with a confusing ACME error.
+# Prove nginx routes this domain to the app rather than to the default site.
+# Without the Host header the request lands on the default server and 404s,
+# which looks identical to a broken vhost.
+vhost_code="$(curl -s -o /dev/null -w '%{http_code}' -H "Host: ${DOMAIN}" "http://127.0.0.1/healthz" || true)"
+if [ "$vhost_code" = "200" ]; then
+  echo "nginx -> app: OK"
+else
+  echo "WARNING: nginx returned $vhost_code for Host: ${DOMAIN} (expected 200)."
+  echo "         Check: sudo nginx -T | grep -A5 '${DOMAIN}'"
+fi
+
+say "TLS"
+# With Cloudflare proxying (orange cloud) the domain resolves to Cloudflare, not
+# to this box, and certbot's HTTP-01 challenge cannot reach here - so detect that
+# rather than firing off a request that fails with an opaque ACME error.
 resolved="$(getent hosts "$DOMAIN" | awk '{print $1}' | head -1 || true)"
 public="$(curl -fsS https://api.ipify.org || true)"
+
 if [ -z "$resolved" ]; then
-  echo "SKIPPING TLS: $DOMAIN does not resolve yet."
-  echo "Add a DNS A record  $DOMAIN -> ${public:-this box IP}  then run:"
+  echo "$DOMAIN does not resolve yet. Add a DNS record pointing at ${public:-this box IP}."
+elif [ -n "$public" ] && [ "$resolved" = "$public" ]; then
+  echo "$DOMAIN points straight at this box, so Let's Encrypt can issue here:"
+  echo "    sudo apt-get install -y certbot python3-certbot-nginx"
   echo "    sudo certbot --nginx -d $DOMAIN"
-elif [ -n "$public" ] && [ "$resolved" != "$public" ]; then
-  echo "SKIPPING TLS: $DOMAIN resolves to $resolved but this box is $public."
-  echo "Fix the DNS record, then run:  sudo certbot --nginx -d $DOMAIN"
 else
-  sudo apt-get install -y -qq certbot python3-certbot-nginx
-  sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos \
-    -m "${CERTBOT_EMAIL:-info@scrapingdog.com}" --redirect
-  sudo systemctl reload nginx
+  echo "$DOMAIN resolves to $resolved, which is not this box (${public:-unknown})."
+  echo "That is expected if the record is proxied through Cloudflare. In that case"
+  echo "Cloudflare serves the public certificate and you only need to secure the"
+  echo "hop from Cloudflare to here:"
+  echo
+  echo "  1. Cloudflare dashboard -> SSL/TLS -> Origin Server -> Create Certificate"
+  echo "  2. Save the two files on this box as:"
+  echo "       /etc/ssl/cloudflare/${DOMAIN}.pem"
+  echo "       /etc/ssl/cloudflare/${DOMAIN}.key"
+  echo "  3. Uncomment the TLS block at the bottom of"
+  echo "       /etc/nginx/sites-available/${DOMAIN}.conf"
+  echo "     then: sudo nginx -t && sudo systemctl reload nginx"
+  echo "  4. Set Cloudflare SSL/TLS mode to 'Full (strict)'."
+  echo
+  echo "Until step 4, set the mode to 'Flexible' to serve traffic immediately -"
+  echo "but do not leave it there: Flexible sends customer API keys from"
+  echo "Cloudflare to this box in plaintext."
 fi
 
 say "Done"
