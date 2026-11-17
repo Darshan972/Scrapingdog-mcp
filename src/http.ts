@@ -101,7 +101,15 @@ async function handleMcpPost(req: http.IncomingMessage, res: http.ServerResponse
 
   const apiKey = bearer(req);
   if (!apiKey) {
-    res.setHeader("WWW-Authenticate", `Bearer realm="${SERVER_NAME}"`);
+    // No WWW-Authenticate here, deliberately. It is the signal that makes a
+    // client go looking for an OAuth authorization server: claude.ai reads it,
+    // registers the connector as "Sign-in required", starts a sign-in flow,
+    // finds no /.well-known/oauth-* metadata because we have none, and reports
+    // the server as unreachable. We authenticate with a static API key the
+    // caller configures as a header, so advertising a bearer challenge is a
+    // promise of a login endpoint that does not exist. Clients that send the
+    // key still work; clients that do not get a plain 401 and the message
+    // below, which says exactly what to send.
     json(res, 401, {
       error: "missing_api_key",
       message:
@@ -152,7 +160,15 @@ async function handleMcpPost(req: http.IncomingMessage, res: http.ServerResponse
 
   const verdict = await verifyApiKey(apiKey);
   if (!verdict.ok) {
-    res.setHeader("WWW-Authenticate", `Bearer realm="${SERVER_NAME}", error="invalid_token"`);
+    // No WWW-Authenticate here, deliberately. It is the signal that makes a
+    // client go looking for an OAuth authorization server: claude.ai reads it,
+    // registers the connector as "Sign-in required", starts a sign-in flow,
+    // finds no /.well-known/oauth-* metadata because we have none, and reports
+    // the server as unreachable. We authenticate with a static API key the
+    // caller configures as a header, so advertising a bearer challenge is a
+    // promise of a login endpoint that does not exist. Clients that send the
+    // key still work; clients that do not get a plain 401 and the message
+    // below, which says exactly what to send.
     json(res, verdict.status, { error: verdict.code, message: verdict.message });
     log({ what, key: keyTail(apiKey), status: verdict.status, ms: Date.now() - startedAt });
     return;
