@@ -23,6 +23,8 @@ import http from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
+import { SUPPORTED_PROTOCOL_VERSIONS } from "@modelcontextprotocol/sdk/types.js";
+
 import { createServer, SERVER_NAME, SERVER_VERSION } from "./server.js";
 import { verifyApiKey, keyTail } from "./auth.js";
 
@@ -125,11 +127,53 @@ async function handleMcpPost(req: http.IncomingMessage, res: http.ServerResponse
 
   const what = describeCall(body);
 
+  // claude.ai opens every connection under MCP revision 2026-07-28, which no
+  // released SDK knows (1.32.2, the latest, tops out at 2025-11-25). The SDK
+  // rejects an unrecognised version outright with 400, so the connector's first
+  // call dies before it reaches us and the UI reports the server as unreachable.
+  //
+  // Dropping the header is what the SDK itself does for a request that omits it:
+  // fall back to the negotiated default. We lose nothing, because we implement
+  // no 2026-07-28 feature anyway - the wire format for what we do serve is
+  // unchanged. Revisit once an SDK ships that version and this can go.
+  const claimed = req.headers["mcp-protocol-version"];
+  if (typeof claimed === "string" && !SUPPORTED_PROTOCOL_VERSIONS.includes(claimed)) {
+    delete req.headers["mcp-protocol-version"];
+    // The SDK's node adapter rebuilds the request from rawHeaders and never
+    // reads .headers, so dropping it from one and not the other changes
+    // nothing. Both have to lose the pair.
+    const raw = req.rawHeaders;
+    const kept: string[] = [];
+    for (let i = 0; i < raw.length; i += 2) {
+      if (raw[i]?.toLowerCase() !== "mcp-protocol-version") kept.push(raw[i], raw[i + 1]);
+    }
+    req.rawHeaders = kept;
+  }
+
   const verdict = await verifyApiKey(apiKey);
   if (!verdict.ok) {
     res.setHeader("WWW-Authenticate", `Bearer realm="${SERVER_NAME}", error="invalid_token"`);
     json(res, verdict.status, { error: verdict.code, message: verdict.message });
     log({ what, key: keyTail(apiKey), status: verdict.status, ms: Date.now() - startedAt });
+    return;
+  }
+
+  // Part of the same revision: a probe the SDK has no handler for. Letting it
+  // through produces a transport-level 400, which clients read as a dead
+  // session rather than "method I do not have" - so answer it the way JSON-RPC
+  // says to. A notification (no id) gets 202 and no body, per spec.
+  if (what === "server/discover") {
+    const id = (body as { id?: string | number | null } | undefined)?.id;
+    if (id === undefined || id === null) {
+      res.writeHead(202).end();
+    } else {
+      json(res, 200, {
+        jsonrpc: "2.0",
+        id,
+        error: { code: -32601, message: "Method not found: server/discover" },
+      });
+    }
+    log({ what, key: keyTail(apiKey), status: res.statusCode, ms: Date.now() - startedAt });
     return;
   }
 
